@@ -196,6 +196,7 @@ UPROGS=\
 	$U/_zombie\
 	$U/_tree\
 	$U/_treetest\
+	$U/_xargs\
 
 
 
