@@ -5,7 +5,6 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -92,30 +91,3 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
-uint64
-sys_trace(void)
-{
-  int mask;
-  argint(0, &mask);
-  myproc()->trace_mask = mask;
-  return 0;
-}
-uint64
-sys_sysinfo(void)
-{
-  struct sysinfo info;
-  uint64 addr; // Địa chỉ vùng nhớ của user truyền vào
-
-  // Lấy địa chỉ pointer từ tham số thứ nhất (index 0)
-  argaddr(0, &addr);
-  // Lấy dữ liệu thực tế
-  info.freemem = count_free_mem();
-  info.nproc = count_processes();
-
-  // Copy dữ liệu từ struct 'info' (Kernel) sang địa chỉ 'addr' (User)
-  if(copyout(myproc()->pagetable, addr, (char *)&info, sizeof(info)) < 0)
-    return -1;
-
-  return 0;
-}
-
