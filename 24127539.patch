@@ -1,0 +1,1753 @@
+diff --git a/.gitignore b/.gitignore
+index 7027962..11d0677 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -25,4 +25,3 @@ barrier
+ .DS_Store
+ *.dSYM
+ *.pcap
+-.vscode
+\ No newline at end of file
+diff --git a/Makefile b/Makefile
+index a98e7ac..be5a8b3 100644
+--- a/Makefile
++++ b/Makefile
+@@ -194,11 +194,9 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
+-	$U/_tree\
+-	$U/_treetest\
+-	$U/_xargs\
+-
+-
++	$U/_trace\
++	$U/_sysinfotest\
++	$U/_sleep
+ 
+ 
+ ifeq ($(LAB),syscall)
+diff --git a/README b/README
+index f583201..5a5d695 100644
+--- a/README
++++ b/README
+@@ -31,6 +31,9 @@ Rafael Ubal, Amane Uehara, Pablo Ventura, Xi Wang, WaheedHafez,
+ Keiichi Watanabe, Lucas Wolf, Nicolas Wolovick, wxdao, Grant Wu, x653,
+ Jindong Zhang, Icenowy Zheng, ZhUyU1997, and Zou Chang Wei.
+ 
++The code in the files that constitute xv6 is
++Copyright 2006-2024 Frans Kaashoek, Robert Morris, and Russ Cox.
++
+ ERROR REPORTS
+ 
+ Please send errors and suggestions to Frans Kaashoek and Robert Morris
+diff --git a/README.md b/README.md
+deleted file mode 100644
+index 88be545..0000000
+--- a/README.md
++++ /dev/null
+@@ -1 +0,0 @@
+-# 9ChamOS - My xv6 Journey
+diff --git a/conf/lab.mk b/conf/lab.mk
+index 629f978..05e8b8d 100644
+--- a/conf/lab.mk
++++ b/conf/lab.mk
+@@ -1 +1 @@
+-LAB=cow
++LAB=util
+diff --git a/detailedtime.txt b/detailedtime.txt
+deleted file mode 100644
+index 2cf7f90..0000000
+--- a/detailedtime.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-2024/10/21 9:00-15:44-16:35-20：19
+-被dec_ref的奇葩bug困扰最后四个小时
+\ No newline at end of file
+diff --git a/grade-lab-cow b/grade-lab-cow
+deleted file mode 100755
+index c51363b..0000000
+--- a/grade-lab-cow
++++ /dev/null
+@@ -1,59 +0,0 @@
+-#!/usr/bin/env python3
+-
+-import re
+-from gradelib import *
+-
+-r = Runner(save("xv6.out"))
+-
+-@test(0, "running cowtest")
+-def test_cowtest():
+-    r.run_qemu(shell_script([
+-        'cowtest'
+-    ]), timeout=300)
+-
+-@test(30, "simple", parent=test_cowtest)
+-def test_simple():
+-    matches = re.findall("^simple: ok$", r.qemu.output, re.M)
+-    assert_equal(len(matches), 2, "Number of appearances of 'simple: ok'")
+-
+-@test(30, "three", parent=test_cowtest)
+-def test_three():
+-    matches = re.findall("^three: ok$", r.qemu.output, re.M)
+-    assert_equal(len(matches), 3, "Number of appearances of 'three: ok'")
+-
+-@test(20, "file", parent=test_cowtest)
+-def test_file():
+-    r.match('^file: ok$')
+-
+-@test(20, "forkfork", parent=test_cowtest)
+-def test_forkfork():
+-    r.match('^forkfork: ok$')
+-
+-@test(0, "usertests")
+-def test_usertests():
+-    r.run_qemu(shell_script([
+-        'usertests -q'
+-    ]), timeout=1000)
+-    r.match('^ALL TESTS PASSED$')
+-
+-def usertest_check(testcase, nextcase, output):
+-    if not re.search(r'\ntest {}: [\s\S]*OK\ntest {}'.format(testcase, nextcase), output):
+-        raise AssertionError('Failed ' + testcase)
+-
+-@test(5, "usertests: copyin", parent=test_usertests)
+-def test_sbrkbugs():
+-    usertest_check("copyin", "copyout", r.qemu.output)
+-
+-@test(5, "usertests: copyout", parent=test_usertests)
+-def test_sbrkbugs():
+-    usertest_check("copyout", "copyinstr1", r.qemu.output)
+-
+-@test(19, "usertests: all tests", parent=test_usertests)
+-def test_usertests_all():
+-    r.match('^ALL TESTS PASSED$')
+-
+-@test(1, "time")
+-def test_time():
+-    check_time()
+-
+-run_tests()
+diff --git a/grade-lab-util b/grade-lab-util
+new file mode 100755
+index 0000000..9ba6e37
+--- /dev/null
++++ b/grade-lab-util
+@@ -0,0 +1,105 @@
++#!/usr/bin/env python3
++
++import re
++from gradelib import *
++
++r = Runner(save("xv6.out"))
++
++@test(5, "sleep, no arguments")
++def test_sleep_no_args():
++    r.run_qemu(shell_script([
++        'sleep'
++    ]))
++    r.match(no=["exec .* failed", "$ sleep\n$"])
++
++@test(5, "sleep, returns")
++def test_sleep_no_args():
++    r.run_qemu(shell_script([
++        'sleep',
++        'echo OK'
++    ]))
++    r.match('^OK$', no=["exec .* failed", "$ sleep\n$"])
++
++@test(10, "sleep, makes syscall")
++def test_sleep():
++    r.run_qemu(shell_script([
++        'sleep 10',
++        'echo FAIL'
++    ]), stop_breakpoint('sys_sleep'))
++    r.match('\\$ sleep 10', no=['FAIL'])
++
++@test(20, "pingpong")
++def test_pingpong():
++    r.run_qemu(shell_script([
++        'pingpong', 'echo OK'
++    ]))
++    r.match('^\\d+: received ping$', '^\\d+: received pong$', '^OK$')
++
++@test(20, "primes")
++def test_primes():
++    r.run_qemu(shell_script([
++        'primes', 'echo OK'
++    ]))
++    args = ['prime %d' % i for i in [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269]]
++    args.append('^OK$')
++    r.match(*args)
++
++@test(10, "find, in current directory")
++def test_find_curdir():
++    fn = random_str()
++    r.run_qemu(shell_script([
++        'echo > %s' % fn,
++        'find . %s' % fn
++    ]))
++    r.match('./%s' % fn)
++    r.match(no=["./README", "README"])
++
++@test(10, "find, in sub-directory")
++def test_find_curdir():
++    dd = random_str()
++    fn = random_str()
++    r.run_qemu(shell_script([
++        'echo > %s' % fn,
++        'mkdir %s' % dd,
++        'echo > %s/%s' % (dd, fn),
++        'find %s %s' % (dd, fn)
++    ]))
++    r.match('%s/%s' % (dd, fn))
++    r.match(no=['./%s' % fn])
++
++@test(10, "find, recursive")
++def test_find_recursive():
++    needle = random_str()
++    dirs = [random_str() for _ in range(3)]
++    r.run_qemu(shell_script([
++        'mkdir %s' % dirs[0],
++        'echo > %s/%s' % (dirs[0], needle),
++        'mkdir %s/%s' % (dirs[0], dirs[1]),
++        'echo > %s/%s/%s' % (dirs[0], dirs[1], needle),
++        'mkdir %s' % dirs[2],
++        'echo > %s/%s' % (dirs[2], needle),
++        'find . %s' % needle
++    ]))
++    r.match('./%s/%s' % (dirs[0], needle),
++            './%s/%s/%s' % (dirs[0], dirs[1], needle),
++            './%s/%s' % (dirs[2], needle))
++
++@test(10, "xargs")
++def test_xargs():
++    r.run_qemu(shell_script([
++        'sh < xargstest.sh',
++        'echo DONE',
++    ], 'DONE'))
++    matches = re.findall("hello", r.qemu.output)
++    assert_equal(len(matches), 3, "Number of appearances of 'hello'")
++
++@test(9, "xargs, multi-line echo")
++def test_xargs_multiline():
++    r.run_qemu(shell_script(['(echo 1 ; echo 2) | xargs echo']))
++    r.match('^1$', '^2$')
++
++@test(1, "time")
++def test_time():
++    check_time()
++    
++run_tests()
+diff --git a/kernel/defs.h b/kernel/defs.h
+index e9eba1a..8e12af1 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,8 +63,7 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
+-void            inc_ref(void*);
+-int             get_ref(void*);
++uint64          count_free_mem(void);
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -108,6 +107,7 @@ void            yield(void);
+ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+ void            procdump(void);
++uint64          count_processes(void);
+ 
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index 733364b..b5175dd 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -8,7 +8,6 @@
+ #include "spinlock.h"
+ #include "riscv.h"
+ #include "defs.h"
+-#define MAXPAGES 32768 // 假设128MB内存 (32768 * 4KB = 128MB)
+ 
+ void freerange(void *pa_start, void *pa_end);
+ 
+@@ -22,7 +21,6 @@ struct run {
+ struct {
+   struct spinlock lock;
+   struct run *freelist;
+-  int refcount[MAXPAGES];
+ } kmem;
+ 
+ void
+@@ -31,61 +29,16 @@ kinit()
+   initlock(&kmem.lock, "kmem");
+   freerange(end, (void*)PHYSTOP);
+ }
+-// 获取物理地址对应的引用计数数组索引
+-static int
+-pa2index(uint64 pa)
+-{
+-  if (pa < (uint64)end)
+-    return -1;
+-  uint64 idx = (pa - (uint64)end) / PGSIZE;
+-  if (idx >= MAXPAGES)
+-    return -1;
+-  return idx;
+-}
+ 
+ void
+ freerange(void *pa_start, void *pa_end)
+ {
+   char *p;
+-  int count = 0;
+   p = (char*)PGROUNDUP((uint64)pa_start);
+   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+-  {
+-    count++;
+-    kmem.refcount[pa2index((uint64)p)] = 1;
+     kfree(p);
+-  }
+-  printf("freerange: initialized %d pages\n", count);
+ }
+ 
+-
+-//增加引用计数
+-void
+-inc_ref(void *pa){
+-  int idx = pa2index((uint64)pa);
+-  if (idx < 0)
+-    return;
+-
+-  acquire(&kmem.lock);
+-  kmem.refcount[idx]++;
+-  // if(idx<10000)
+-  //   printf("inc ref at pa %ld,idx is %d,refcount is %d\n ", (uint64)pa,idx, kmem.refcount[idx]);
+-  release(&kmem.lock);
+-}
+-
+-// 获取引用计数
+-int get_ref(void *pa)
+-{
+-  int idx = pa2index((uint64)pa);
+-  int count;
+-  if (idx < 0)
+-    return -1;
+-
+-  acquire(&kmem.lock);
+-  count=kmem.refcount[idx];
+-  release(&kmem.lock);
+-  return count;
+-}
+ // Free the page of physical memory pointed at by pa,
+ // which normally should have been returned by a
+ // call to kalloc().  (The exception is when
+@@ -98,21 +51,14 @@ kfree(void *pa)
+   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+     panic("kfree");
+ 
+-  int idx = pa2index((uint64)pa);
+-  if (idx < 0 || kmem.refcount[idx] <= 0){
+-    printf("end is %lx,pa is %lx,idx is %d,ref count is %d\n", (uint64)end,(uint64)pa, idx, kmem.refcount[idx]);
+-    panic("kfree: invalid pa or refcount");
+-  }
+-  acquire(&kmem.lock);
+-  int count = --kmem.refcount[idx];
+   // Fill with junk to catch dangling refs.
+-  if(count==0)
+-  {
+-    memset(pa, 1, PGSIZE);
+-    r = (struct run *)pa;
+-    r->next = kmem.freelist;
+-    kmem.freelist = r; 
+-  }
++  memset(pa, 1, PGSIZE);
++
++  r = (struct run*)pa;
++
++  acquire(&kmem.lock);
++  r->next = kmem.freelist;
++  kmem.freelist = r;
+   release(&kmem.lock);
+ }
+ 
+@@ -126,13 +72,26 @@ kalloc(void)
+ 
+   acquire(&kmem.lock);
+   r = kmem.freelist;
+-  if(r){
++  if(r)
+     kmem.freelist = r->next;
+-    kmem.refcount[pa2index((uint64)r)] = 1; // 设置引用计数为1
+-  }
+   release(&kmem.lock);
+ 
+   if(r)
+     memset((char*)r, 5, PGSIZE); // fill with junk
+   return (void*)r;
+ }
++uint64
++count_free_mem(void)
++{
++  struct run *r;
++  uint64 count = 0;
++
++  acquire(&kmem.lock); // Khóa để đảm bảo an toàn đa nhân (multicore)
++  r = kmem.freelist;   // Lấy danh sách các trang trống
++  while(r){
++    count++;           // Duyệt và đếm từng trang
++    r = r->next;
++  }
++  release(&kmem.lock);
++  return count * 4096; // Trả về tổng số bytes trống
++}
+diff --git a/kernel/param.h b/kernel/param.h
+index 80ec6d3..07e6f17 100644
+--- a/kernel/param.h
++++ b/kernel/param.h
+@@ -1,4 +1,8 @@
+-#define NPROC        64  // maximum number of processes
++#ifdef LAB_FS
++#define NPROC        10  // maximum number of processes
++#else
++#define NPROC        64  // maximum number of processes (speedsup bigfile)
++#endif
+ #define NCPU          8  // maximum number of CPUs
+ #define NOFILE       16  // open files per process
+ #define NFILE       100  // open files per system
+@@ -9,7 +13,21 @@
+ #define MAXOPBLOCKS  10  // max # of blocks any FS op writes
+ #define LOGSIZE      (MAXOPBLOCKS*3)  // max data blocks in on-disk log
+ #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
+-#define FSSIZE       2000  // size of file system in blocks
++#ifdef LAB_FS
++#define FSSIZE       200000  // size of file system in blocks
++#else
++#ifdef LAB_LOCK
++#define FSSIZE       10000  // size of file system in blocks
++#else
++#define FSSIZE       2000   // size of file system in blocks
++#endif
++#endif
+ #define MAXPATH      128   // maximum file path name
++
++#ifdef LAB_UTIL
++#define USERSTACK    2     // user stack pages
++#else
+ #define USERSTACK    1     // user stack pages
++#endif
++
+ 
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 130d9ce..fc45a3c 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -274,6 +274,7 @@ growproc(int n)
+   return 0;
+ }
+ 
++// cha sang con
+ // Create a new process, copying the parent.
+ // Sets up child kernel stack to return as if from fork() system call.
+ int
+@@ -302,6 +303,8 @@ fork(void)
+   // Cause fork to return 0 in the child.
+   np->trapframe->a0 = 0;
+ 
++  np->trace_mask = p->trace_mask;
++
+   // increment reference counts on open file descriptors.
+   for(i = 0; i < NOFILE; i++)
+     if(p->ofile[i])
+@@ -693,3 +696,15 @@ procdump(void)
+     printf("\n");
+   }
+ }
++uint64
++count_processes(void)
++{
++  struct proc *p;
++  uint64 count = 0;
++
++  for(p = proc; p < &proc[NPROC]; p++){
++    if(p->state != UNUSED) // Nếu slot này đang được sử dụng
++      count++;
++  }
++  return count;
++}
+diff --git a/kernel/proc.h b/kernel/proc.h
+index d021857..07725e3 100644
+--- a/kernel/proc.h
++++ b/kernel/proc.h
+@@ -104,4 +104,5 @@ struct proc {
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
++  int trace_mask;
+ };
+diff --git a/kernel/riscv.h b/kernel/riscv.h
+index f6a79a0..6cfff1e 100644
+--- a/kernel/riscv.h
++++ b/kernel/riscv.h
+@@ -204,7 +204,7 @@ r_menvcfg()
+ static inline void 
+ w_menvcfg(uint64 x)
+ {
+-  // asm volatile("csrw menvcfg, %0" : : "r" (x));
++  //asm volatile("csrw menvcfg, %0" : : "r" (x));
+   asm volatile("csrw 0x30a, %0" : : "r" (x));
+ }
+ 
+@@ -314,6 +314,14 @@ r_sp()
+   return x;
+ }
+ 
++static inline uint64
++r_fp()
++{
++  uint64 x;
++  asm volatile("mv %0, s0" : "=r" (x) );
++  return x;
++}
++
+ // read and write tp, the thread pointer, which xv6 uses to hold
+ // this core's hartid (core number), the index into cpus[].
+ static inline uint64
+@@ -354,6 +362,11 @@ typedef uint64 *pagetable_t; // 512 PTEs
+ #define PGSIZE 4096 // bytes per page
+ #define PGSHIFT 12  // bits of offset within a page
+ 
++#ifdef LAB_PGTBL
++#define SUPERPGSIZE (2 * (1 << 20)) // bytes per page
++#define SUPERPGROUNDUP(sz)  (((sz)+SUPERPGSIZE-1) & ~(SUPERPGSIZE-1))
++#endif
++
+ #define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))
+ #define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
+ 
+@@ -362,7 +375,12 @@ typedef uint64 *pagetable_t; // 512 PTEs
+ #define PTE_W (1L << 2)
+ #define PTE_X (1L << 3)
+ #define PTE_U (1L << 4) // user can access
+-#define PTE_COW (1L << 8)//COW bit
++
++
++
++#if defined(LAB_MMAP) || defined(LAB_PGTBL)
++#define PTE_LEAF(pte) (((pte) & PTE_R) | ((pte) & PTE_W) | ((pte) & PTE_X))
++#endif
+ 
+ // shift a physical address to the right place for a PTE.
+ #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..a387ddd 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,6 +101,8 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_trace(void);
++extern uint64 sys_sysinfo(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -126,6 +128,35 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_trace]   sys_trace,
++[SYS_sysinfo] sys_sysinfo,
++};
++
++
++static char *syscall_names[] = {
++[SYS_fork]    "fork",
++[SYS_exit]    "exit",
++[SYS_wait]    "wait",
++[SYS_pipe]    "pipe",
++[SYS_read]    "read",
++[SYS_kill]    "kill",
++[SYS_exec]    "exec",
++[SYS_fstat]   "fstat",
++[SYS_chdir]   "chdir",
++[SYS_dup]     "dup",
++[SYS_getpid]  "getpid",
++[SYS_sbrk]    "sbrk",
++[SYS_sleep]   "sleep",
++[SYS_uptime]  "uptime",
++[SYS_open]    "open",
++[SYS_write]   "write",
++[SYS_mknod]   "mknod",
++[SYS_unlink]  "unlink",
++[SYS_link]    "link",
++[SYS_mkdir]   "mkdir",
++[SYS_close]   "close",
++[SYS_trace]   "trace",
++[SYS_sysinfo] "sysinfo",
+ };
+ 
+ void
+@@ -134,14 +165,16 @@ syscall(void)
+   int num;
+   struct proc *p = myproc();
+ 
+-  num = p->trapframe->a7;
++  num = p->trapframe->a7; // Lấy số hiệu syscall từ thanh ghi a7 
+   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+-    // Use num to lookup the system call function for num, call it,
+-    // and store its return value in p->trapframe->a0
+-    p->trapframe->a0 = syscalls[num]();
++    p->trapframe->a0 = syscalls[num](); // Thực thi syscall và lưu kết quả vào a0 
++
++    // Đoạn logic in kết quả trace:
++    if(p->trace_mask & (1 << num)) {
++      printf("%d: syscall %s -> %d\n", p->pid, syscall_names[num], (int)p->trapframe->a0);
++    }
+   } else {
+-    printf("%d %s: unknown sys call %d\n",
+-            p->pid, p->name, num);
++    printf("%d %s: unknown sys call %d\n", p->pid, p->name, num);
+     p->trapframe->a0 = -1;
+   }
+ }
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..0dfedc7 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_trace  22
++#define SYS_sysinfo 23
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+new file mode 100644
+index 0000000..dd32c7a
+--- /dev/null
++++ b/kernel/sysinfo.h
+@@ -0,0 +1,4 @@
++struct sysinfo {
++  uint64 freemem;   // Lượng bộ nhớ trống (bytes)
++  uint64 nproc;     // Số lượng tiến trình đang chạy
++};
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 3b4d5bd..dc6e376 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -5,6 +5,7 @@
+ #include "memlayout.h"
+ #include "spinlock.h"
+ #include "proc.h"
++#include "sysinfo.h"
+ 
+ uint64
+ sys_exit(void)
+@@ -91,3 +92,30 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++uint64
++sys_trace(void)
++{
++  int mask;
++  argint(0, &mask);
++  myproc()->trace_mask = mask;
++  return 0;
++}
++uint64
++sys_sysinfo(void)
++{
++  struct sysinfo info;
++  uint64 addr; // Địa chỉ vùng nhớ của user truyền vào
++
++  // Lấy địa chỉ pointer từ tham số thứ nhất (index 0)
++  argaddr(0, &addr);
++  // Lấy dữ liệu thực tế
++  info.freemem = count_free_mem();
++  info.nproc = count_processes();
++
++  // Copy dữ liệu từ struct 'info' (Kernel) sang địa chỉ 'addr' (User)
++  if(copyout(myproc()->pagetable, addr, (char *)&info, sizeof(info)) < 0)
++    return -1;
++
++  return 0;
++}
++
+diff --git a/kernel/trap.c b/kernel/trap.c
+index f0e6302..d454a7d 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -67,64 +67,12 @@ usertrap(void)
+     syscall();
+   } else if((which_dev = devintr()) != 0){
+     // ok
+-  } else if( r_scause()==15){
+-    struct proc* p=myproc();
+-    uint64 va=r_stval();
+-    if (va >= MAXVA){
+-      setkilled(p);
+-      goto err;
+-    }
+-    pte_t *pte = walk(p->pagetable, va, 0);
+-
+-    if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 )
+-    {
+-      setkilled(p);
+-      goto err;
+-    }
+-    if (*pte & PTE_COW){
+-      uint64 pa = PTE2PA(*pte);
+-      // book p49:This book-keeping allows an important optimization: if a process incurs a store page fault and the
+-      //physical page is only referred to from that process’s page table, no copy is needed
+-      if (get_ref((void *)pa) == 1)
+-      {
+-        // 清除COW位并设置写权限
+-        *pte  &= ~PTE_COW;  // 清除COW位
+-        *pte |= PTE_W;      // 设置写权限
+-        sfence_vma();
+-      }
+-      else
+-      {
+-        char *mem = kalloc();
+-        if (mem == 0)
+-        {
+-          printf("usertrap(): kalloc failed!pid=%d\n", p->pid);
+-          printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+-          setkilled(p);
+-        }
+-        memmove(mem, (char *)pa, PGSIZE);
+-
+-        uint flags = PTE_FLAGS(*pte);
+-        flags &= ~PTE_COW; 
+-        flags |= PTE_W;    
+-        *pte = PA2PTE(mem) | flags | PTE_V;
+-        //dec_ref((void *)pa);
+-        kfree((void *)pa);
+-        sfence_vma();
+-      }
+-    }
+-    else
+-    {
+-      printf("usertrap(): write to read-only page\n");
+-      setkilled(p);
+-    }
+-  }
+-  else {
++  } else {
+     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+     setkilled(p);
+   }
+ 
+-err:
+   if(killed(p))
+     exit(-1);
+ 
+diff --git a/kernel/vm.c b/kernel/vm.c
+index db89df8..62421a2 100644
+--- a/kernel/vm.c
++++ b/kernel/vm.c
+@@ -315,7 +315,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+   pte_t *pte;
+   uint64 pa, i;
+   uint flags;
+-  //char *mem;
++  char *mem;
+ 
+   for(i = 0; i < sz; i += PGSIZE){
+     if((pte = walk(old, i, 0)) == 0)
+@@ -323,24 +323,19 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+     if((*pte & PTE_V) == 0)
+       panic("uvmcopy: page not present");
+     pa = PTE2PA(*pte);
+-    if(*pte& PTE_W){
+-      *pte = *pte | PTE_COW;//如果原来是wrtitable,将cow bit设置成1
+-      *pte = *pte & (~PTE_W);//将write bit设置为0
+-    }
+     flags = PTE_FLAGS(*pte);
+-    // if((mem = kalloc()) == 0)
+-    //   goto err;
+-    // memmove(mem, (char*)pa, PGSIZE);
+-    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+-      //kfree(mem);
++    if((mem = kalloc()) == 0)
++      goto err;
++    memmove(mem, (char*)pa, PGSIZE);
++    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
++      kfree(mem);
+       goto err;
+     }
+-    inc_ref((void *)pa);
+   }
+   return 0;
+ 
+  err:
+-  uvmunmap(new, 0, i / PGSIZE, 0);
++  uvmunmap(new, 0, i / PGSIZE, 1);
+   return -1;
+ }
+ 
+@@ -371,29 +366,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+     if(va0 >= MAXVA)
+       return -1;
+     pte = walk(pagetable, va0, 0);
+-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
++    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
++       (*pte & PTE_W) == 0)
+       return -1;
+-    if (*pte & PTE_COW){
+-      char *mem = kalloc();
+-      if (mem == 0)
+-        return -1;
+-
+-      // 复制旧页面内容
+-      pa0 = PTE2PA(*pte);
+-      memmove(mem, (char *)pa0, PGSIZE);
+-      uint flags = PTE_FLAGS(*pte);
+-      flags &= ~PTE_COW;
+-      flags |= PTE_W;
+-      *pte = PA2PTE(mem) | flags;
+-      //将dec_ref换成kfree后,错误就没有了！！
+-      //因为Copyout需要free 物理内存？可是这不是copy复制吗？不是move啊！
+-      //dec_ref((void *)pa0);
+-      kfree((void*)pa0);
+-      sfence_vma();
+-    }
+-    if ((*pte & PTE_W) == 0){
+-      return-1;
+-    }
+     pa0 = PTE2PA(*pte);
+     n = PGSIZE - (dstva - va0);
+     if(n > len)
+diff --git a/sleep.c b/sleep.c
+new file mode 100644
+index 0000000..e69de29
+diff --git a/time.txt b/time.txt
+deleted file mode 100644
+index c793025..0000000
+--- a/time.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-7
+\ No newline at end of file
+diff --git a/user/cowtest.c b/user/cowtest.c
+deleted file mode 100644
+index 1de14ed..0000000
+--- a/user/cowtest.c
++++ /dev/null
+@@ -1,240 +0,0 @@
+-//
+-// tests for copy-on-write fork() assignment.
+-//
+-
+-#include "kernel/types.h"
+-#include "kernel/memlayout.h"
+-#include "user/user.h"
+-
+-// allocate more than half of physical memory,
+-// then fork. this will fail in the default
+-// kernel, which does not support copy-on-write.
+-void
+-simpletest()
+-{
+-  uint64 phys_size = PHYSTOP - KERNBASE;
+-  int sz = (phys_size / 3) * 2;
+-
+-  printf("simple: ");
+-  
+-  char *p = sbrk(sz);
+-  if(p == (char*)0xffffffffffffffffL){
+-    printf("sbrk(%d) failed\n", sz);
+-    exit(-1);
+-  }
+-
+-  for(char *q = p; q < p + sz; q += 4096){
+-    *(int*)q = getpid();
+-  }
+-
+-  int pid = fork();
+-  if(pid < 0){
+-    printf("fork() failed\n");
+-    exit(-1);
+-  }
+-
+-  if(pid == 0)
+-    exit(0);
+-
+-  wait(0);
+-
+-  if(sbrk(-sz) == (char*)0xffffffffffffffffL){
+-    printf("sbrk(-%d) failed\n", sz);
+-    exit(-1);
+-  }
+-
+-  printf("ok\n");
+-}
+-
+-// three processes all write COW memory.
+-// this causes more than half of physical memory
+-// to be allocated, so it also checks whether
+-// copied pages are freed.
+-void
+-threetest()
+-{
+-  uint64 phys_size = PHYSTOP - KERNBASE;
+-  int sz = phys_size / 4;
+-  int pid1, pid2;
+-
+-  printf("three: ");
+-  
+-  char *p = sbrk(sz);
+-  if(p == (char*)0xffffffffffffffffL){
+-    printf("sbrk(%d) failed\n", sz);
+-    exit(-1);
+-  }
+-
+-  pid1 = fork();
+-  if(pid1 < 0){
+-    printf("fork failed\n");
+-    exit(-1);
+-  }
+-  if(pid1 == 0){
+-    pid2 = fork();
+-    if(pid2 < 0){
+-      printf("fork failed");
+-      exit(-1);
+-    }
+-    if(pid2 == 0){
+-      for(char *q = p; q < p + (sz/5)*4; q += 4096){
+-        *(int*)q = getpid();
+-      }
+-      for(char *q = p; q < p + (sz/5)*4; q += 4096){
+-        if(*(int*)q != getpid()){
+-          printf("wrong content\n");
+-          exit(-1);
+-        }
+-      }
+-      exit(-1);
+-    }
+-    for(char *q = p; q < p + (sz/2); q += 4096){
+-      *(int*)q = 9999;
+-    }
+-    exit(0);
+-  }
+-
+-  for(char *q = p; q < p + sz; q += 4096){
+-    *(int*)q = getpid();
+-  }
+-
+-  wait(0);
+-
+-  sleep(1);
+-
+-  for(char *q = p; q < p + sz; q += 4096){
+-    if(*(int*)q != getpid()){
+-      printf("wrong content\n");
+-      exit(-1);
+-    }
+-  }
+-
+-  if(sbrk(-sz) == (char*)0xffffffffffffffffL){
+-    printf("sbrk(-%d) failed\n", sz);
+-    exit(-1);
+-  }
+-
+-  printf("ok\n");
+-}
+-
+-char junk1[4096];
+-int fds[2];
+-char junk2[4096];
+-char buf[4096];
+-char junk3[4096];
+-
+-// test whether copyout() simulates COW faults.
+-void
+-filetest()
+-{
+-  printf("file: ");
+-  
+-  buf[0] = 99;
+-
+-  for(int i = 0; i < 4; i++){
+-    if(pipe(fds) != 0){
+-      printf("pipe() failed\n");
+-      exit(-1);
+-    }
+-    int pid = fork();
+-    if(pid < 0){
+-      printf("fork failed\n");
+-      exit(-1);
+-    }
+-    if(pid == 0){
+-      sleep(1);
+-      if(read(fds[0], buf, sizeof(i)) != sizeof(i)){
+-        printf("error: read failed\n");
+-        exit(1);
+-      }
+-      sleep(1);
+-      int j = *(int*)buf;
+-      if(j != i){
+-        printf("error: read the wrong value\n");
+-        exit(1);
+-      }
+-      exit(0);
+-    }
+-    if(write(fds[1], &i, sizeof(i)) != sizeof(i)){
+-      printf("error: write failed\n");
+-      exit(-1);
+-    }
+-  }
+-
+-  int xstatus = 0;
+-  for(int i = 0; i < 4; i++) {
+-    wait(&xstatus);
+-    if(xstatus != 0) {
+-      exit(1);
+-    }
+-  }
+-
+-  if(buf[0] != 99){
+-    printf("error: child overwrote parent\n");
+-    exit(1);
+-  }
+-
+-  printf("ok\n");
+-}
+-
+-//
+-// try to expose races in page reference counting.
+-//
+-void
+-forkforktest()
+-{
+-  printf("forkfork: ");
+-
+-  int sz = 256 * 4096;
+-  char *p = sbrk(sz);
+-  memset(p, 27, sz);
+-
+-  int children = 3;
+-
+-  for(int iter = 0; iter < 100; iter++){
+-    for(int nc = 0; nc < children; nc++){
+-      if(fork() == 0){
+-        sleep(2);
+-        fork();
+-        fork();
+-        exit(0);
+-      }
+-    }
+-
+-    for(int nc = 0; nc < children; nc++){
+-      int st;
+-      wait(&st);
+-    }
+-  }
+-
+-  sleep(5);
+-  for(int i = 0; i < sz; i += 4096){
+-    if(p[i] != 27){
+-      printf("error: parent's memory was modified!\n");
+-      exit(1);
+-    }
+-  }
+-
+-  printf("ok\n");
+-}
+-
+-int
+-main(int argc, char *argv[])
+-{
+-  simpletest();
+-
+-  // check that the first simpletest() freed the physical memory.
+-  simpletest();
+-
+-  threetest();
+-  threetest();
+-  threetest();
+-
+-  filetest();
+-
+-  forkforktest();
+-
+-  printf("ALL COW TESTS PASSED\n");
+-
+-  exit(0);
+-}
+diff --git a/user/sleep.c b/user/sleep.c
+new file mode 100644
+index 0000000..f3806cf
+--- /dev/null
++++ b/user/sleep.c
+@@ -0,0 +1,16 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[]) {
++    // Nếu người dùng quên gõ số giây (VD: chỉ gõ "sleep" thay vì "sleep 10")
++    if(argc != 2){
++        fprintf(2, "Cach dung: sleep <so_giay>\n");
++        exit(1);
++    }
++
++    // Đổi chữ "10" thành số 10 rồi gọi system call báo cho Kernel đi ngủ
++    sleep(atoi(argv[1]));
++ 
++    exit(0);
++}
+diff --git a/user/sysinfotest.c b/user/sysinfotest.c
+new file mode 100644
+index 0000000..acd8605
+--- /dev/null
++++ b/user/sysinfotest.c
+@@ -0,0 +1,90 @@
++#include "kernel/types.h"
++#include "kernel/riscv.h"
++#include "kernel/sysinfo.h"
++#include "user/user.h"
++
++void
++testmem()
++{
++  struct sysinfo info;
++  uint64 n0, n1;
++
++  if (sysinfo(&info) < 0) {
++    printf("sysinfo failed\n");
++    exit(1);
++  }
++  n0 = info.freemem;
++
++  void *p = sbrk(4096);
++  if (p == (void*)-1) {
++    printf("sbrk failed\n");
++    exit(1);
++  }
++
++  if (sysinfo(&info) < 0) {
++    printf("sysinfo failed\n");
++    exit(1);
++  }
++  n1 = info.freemem;
++
++  if (n1 != n0 - 4096) {
++    printf("free memory did not decrease by 4096; n0 %d n1 %d\n", (int)n0, (int)n1);
++    exit(1);
++  }
++
++  sbrk(-4096);
++  if (sysinfo(&info) < 0) {
++    printf("sysinfo failed\n");
++    exit(1);
++  }
++
++  if (info.freemem != n0) {
++    printf("free memory did not return to n0; n0 %d n1 %d\n", (int)n0, (int)info.freemem);
++    exit(1);
++  }
++}
++
++void
++testproc()
++{
++  struct sysinfo info;
++  uint64 n0, n1;
++
++  if (sysinfo(&info) < 0) {
++    printf("sysinfo failed\n");
++    exit(1);
++  }
++  n0 = info.nproc;
++
++  int pid = fork();
++  if (pid < 0) {
++    printf("fork failed\n");
++    exit(1);
++  }
++  if (pid == 0) {
++    sleep(1);
++    exit(0);
++  }
++
++  if (sysinfo(&info) < 0) {
++    printf("sysinfo failed\n");
++    exit(1);
++  }
++  n1 = info.nproc;
++
++  wait(0);
++
++  if (n1 != n0 + 1) {
++    printf("nproc did not increase by 1; n0 %d n1 %d\n",(int)n0,(int)n1);
++    exit(1);
++  }
++}
++
++int
++main(int argc, char *argv[])
++{
++  testmem();
++  testproc();
++  printf("sysinfotest: OK\n");
++  exit(0);
++}
+diff --git a/user/trace.c b/user/trace.c
+new file mode 100644
+index 0000000..303041a
+--- /dev/null
++++ b/user/trace.c
+@@ -0,0 +1,29 @@
++#include "kernel/param.h"
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int
++main(int argc, char *argv[])
++{
++  int i;
++  char *nargv[MAXARG];
++
++  if(argc < 3 || (argv[1][0] < '0' || argv[1][0] > '9')){
++    fprintf(2, "Usage: %s mask command\n", argv[0]);
++    exit(1);
++  }
++
++  if (trace(atoi(argv[1])) < 0) {
++    fprintf(2, "%s: trace failed\n", argv[0]);
++    exit(1);
++  }
++
++  for(i = 2; i < argc && i < MAXARG; i++){
++    nargv[i-2] = argv[i];
++  }
++  nargv[i-2] = 0;
++  exec(nargv[0], nargv);
++  printf("exec %s failed\n", nargv[0]);
++  exit(1);
++}
+diff --git a/user/tree.c b/user/tree.c
+deleted file mode 100644
+index edce4c4..0000000
+--- a/user/tree.c
++++ /dev/null
+@@ -1,127 +0,0 @@
+-#include "kernel/types.h"
+-#include "kernel/stat.h"
+-#include "kernel/fs.h"
+-#include "user/user.h"
+-
+-static void
+-print_indent(int depth)
+-{
+-  for (int i = 0; i < depth; i++)
+-    printf("  "); // 2 spaces mỗi level
+-}
+-
+-static char*
+-base_name(char *path)
+-{
+-  int n = strlen(path);
+-
+-  while (n > 1 && path[n - 1] == '/')
+-    n--;
+-
+-  int start = n - 1;
+-  while (start >= 0 && path[start] != '/')
+-    start--;
+-
+-  if (start < 0)
+-    return path;
+-
+-  return path + start + 1;
+-}
+-
+-static void
+-tree(char *path, int depth)
+-{
+-  int fd;
+-  struct stat st;
+-
+-  fd = open(path, 0);
+-  if (fd < 0) {
+-    fprintf(2, "tree: cannot open %s\n", path);
+-    exit(1);
+-  }
+-
+-  if (fstat(fd, &st) < 0) {
+-    fprintf(2, "tree: cannot stat %s\n", path);
+-    close(fd);
+-    exit(1);
+-  }
+-
+-  // Nếu path là file thường: chỉ in file và return
+-  if (st.type != T_DIR) {
+-    char *name = base_name(path);
+-    print_indent(depth);
+-    printf("%s\n", name);
+-    close(fd);
+-    return;
+-  }
+-
+-  print_indent(depth);
+-  if (strcmp(path, "/") == 0)
+-    printf("/\n");
+-  else if (strcmp(path, ".") == 0)
+-    printf("./\n");
+-  else {
+-    char *dname = base_name(path);
+-    printf("%s/\n", dname);
+-  }
+-
+-  // Duyệt các entry trong directory
+-  struct dirent de;
+-  char buf[512], *p;
+-
+-  if (strlen(path) + 1 + DIRSIZ + 1 > sizeof(buf)) {
+-    fprintf(2, "tree: path too long %s\n", path);
+-    close(fd);
+-    return;
+-  }
+-
+-  strcpy(buf, path);
+-  p = buf + strlen(buf);
+-  if (p > buf && *(p-1) != '/')
+-    *p++ = '/';
+-
+-  while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+-    if (de.inum == 0)
+-      continue;
+-
+-    char name[DIRSIZ + 1];
+-    memmove(name, de.name, DIRSIZ);
+-    name[DIRSIZ] = 0;
+-
+-    // Skip "." and ".."
+-    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+-      continue;
+-
+-    // Build child path: parent/name
+-    memmove(p, name, strlen(name));
+-    p[strlen(name)] = 0;
+-
+-    struct stat st2;
+-    if (stat(buf, &st2) < 0) {
+-      fprintf(2, "tree: cannot stat %s\n", buf);
+-      continue; // yêu cầu: stat fail thì báo lỗi nhưng vẫn tiếp tục
+-    }
+-
+-    if (st2.type == T_DIR) {
+-      tree(buf, depth + 1);
+-    } else {
+-      print_indent(depth + 1);
+-      printf("%s\n", name);
+-    }
+-  }
+-
+-  close(fd);
+-}
+-
+-int
+-main(int argc, char *argv[])
+-{
+-  if (argc > 2) {
+-    fprintf(2, "usage: tree [directory]\n");
+-    exit(1);
+-  }
+-
+-  char *start = (argc == 2) ? argv[1] : ".";
+-  tree(start, 0);
+-  exit(0);
+-}
+\ No newline at end of file
+diff --git a/user/treetest.c b/user/treetest.c
+deleted file mode 100644
+index 86cf433..0000000
+--- a/user/treetest.c
++++ /dev/null
+@@ -1,232 +0,0 @@
+-#include "kernel/types.h"
+-#include "user/user.h"
+-#include "kernel/fcntl.h"
+-
+-// Tao file rong
+-static void touch(char *path) {
+-  int fd = open(path, O_CREATE | O_WRONLY);
+-  if (fd < 0) {
+-    fprintf(2, "treetest: cannot create %s\n", path);
+-    return;
+-  }
+-  close(fd);
+-}
+-
+-// Chay tree va bat output vao buf, tra ve so byte doc duoc
+-static int run_tree_capture(char *arg, char *buf, int bufsz) {
+-  int p[2];
+-  pipe(p);
+-
+-  int pid = fork();
+-  if (pid == 0) {
+-    // Child: redirect stdout sang pipe
+-    close(1);
+-    dup(p[1]);
+-    close(p[0]);
+-    close(p[1]);
+-
+-    if (arg) {
+-      char *argv[] = {"tree", arg, 0};
+-      exec("tree", argv);
+-    } else {
+-      char *argv[] = {"tree", 0};
+-      exec("tree", argv);
+-    }
+-    fprintf(2, "treetest: exec tree failed\n");
+-    exit(1);
+-  }
+-
+-  // Parent: doc output tu pipe
+-  close(p[1]);
+-  int total = 0;
+-  int n;
+-  while ((n = read(p[0], buf + total, bufsz - total - 1)) > 0)
+-    total += n;
+-  buf[total] = 0;
+-  close(p[0]);
+-  wait(0);
+-  return total;
+-}
+-
+-// Chay tree va bat stderr vao buf (cho test loi)
+-static int run_tree_capture_err(char *arg, char *buf, int bufsz) {
+-  int p[2];
+-  pipe(p);
+-
+-  int pid = fork();
+-  if (pid == 0) {
+-    // Child: redirect stderr sang pipe
+-    close(2);
+-    dup(p[1]);
+-    close(p[0]);
+-    close(p[1]);
+-
+-    char *argv[] = {"tree", arg, 0};
+-    exec("tree", argv);
+-    exit(1);
+-  }
+-
+-  close(p[1]);
+-  int total = 0;
+-  int n;
+-  while ((n = read(p[0], buf + total, bufsz - total - 1)) > 0)
+-    total += n;
+-  buf[total] = 0;
+-  close(p[0]);
+-  wait(0);
+-  return total;
+-}
+-
+-// So sanh 2 chuoi, tra ve 1 neu giong
+-static int streq(char *a, char *b) {
+-  while (*a && *b) {
+-    if (*a != *b)
+-      return 0;
+-    a++;
+-    b++;
+-  }
+-  return *a == *b;
+-}
+-
+-// Kiem tra actual co chua expected khong
+-static int strcontains(char *actual, char *expected) {
+-  int la = strlen(actual);
+-  int le = strlen(expected);
+-  if (le > la)
+-    return 0;
+-  for (int i = 0; i <= la - le; i++) {
+-    int match = 1;
+-    for (int j = 0; j < le; j++) {
+-      if (actual[i + j] != expected[j]) {
+-        match = 0;
+-        break;
+-      }
+-    }
+-    if (match)
+-      return 1;
+-  }
+-  return 0;
+-}
+-
+-static int passed = 0;
+-static int failed = 0;
+-
+-static void check(char *testname, char *actual, char *expected, int exact) {
+-  int ok;
+-  if (exact)
+-    ok = streq(actual, expected);
+-  else
+-    ok = strcontains(actual, expected);
+-
+-  if (ok) {
+-    printf("  [PASS] %s\n", testname);
+-    passed++;
+-  } else {
+-    printf("  [FAIL] %s\n", testname);
+-    printf("    Mong doi:\n---\n%s---\n", expected);
+-    printf("    Thuc te:\n---\n%s---\n", actual);
+-    failed++;
+-  }
+-}
+-
+-char buf[4096];
+-
+-int main(int argc, char *argv[]) {
+-  printf("========================================\n");
+-  printf("  TREE AUTO TEST\n");
+-  printf("========================================\n\n");
+-
+-  // ========== TEST 1 ==========
+-  printf("--- TEST 1: Cau truc co ban ---\n");
+-  mkdir("td");
+-  touch("td/b");
+-  mkdir("td/aa");
+-  touch("td/aa/b");
+-  touch("td/aa/c");
+-  mkdir("td/ab");
+-  touch("td/ab/d");
+-
+-  run_tree_capture("td", buf, sizeof(buf));
+-  check("Cau truc co ban", buf,
+-        "td/\n"
+-        "  b\n"
+-        "  aa/\n"
+-        "    b\n"
+-        "    c\n"
+-        "  ab/\n"
+-        "    d\n",
+-        1);
+-
+-  // ========== TEST 2 ==========
+-  printf("--- TEST 2: Thu muc long sau ---\n");
+-  mkdir("td/aa/aaa");
+-  touch("td/aa/aaa/file");
+-
+-  run_tree_capture("td", buf, sizeof(buf));
+-  check("Thu muc long 3 cap", buf,
+-        "td/\n"
+-        "  b\n"
+-        "  aa/\n"
+-        "    b\n"
+-        "    c\n"
+-        "    aaa/\n"
+-        "      file\n"
+-        "  ab/\n"
+-        "    d\n",
+-        1);
+-
+-  // ========== TEST 3 ==========
+-  printf("--- TEST 3: Thu muc rong ---\n");
+-  mkdir("emptydir");
+-
+-  run_tree_capture("emptydir", buf, sizeof(buf));
+-  check("Thu muc rong", buf, "emptydir/\n", 1);
+-
+-  // ========== TEST 4 ==========
+-  printf("--- TEST 4: tree \".\" ---\n");
+-  run_tree_capture(".", buf, sizeof(buf));
+-  check("Bat dau bang ./", buf, "./\n",
+-        0); // chi kiem tra co chua "./\n"
+-
+-  // ========== TEST 5 ==========
+-  printf("--- TEST 5: tree \"/\" ---\n");
+-  run_tree_capture("/", buf, sizeof(buf));
+-  check("Bat dau bang /", buf, "/\n",
+-        0); // chi kiem tra co chua "/\n"
+-
+-  // ========== TEST 6 ==========
+-  printf("--- TEST 6: tree khong tham so ---\n");
+-  run_tree_capture(0, buf, sizeof(buf));
+-  check("Mac dinh dung \".\"", buf, "./\n", 0);
+-
+-  // ========== TEST 7 ==========
+-  printf("--- TEST 7: Thu muc khong ton tai ---\n");
+-  run_tree_capture_err("khongtontai", buf, sizeof(buf));
+-  check("Bao loi cannot open", buf, "cannot open", 0);
+-
+-  // ========== TEST 8 ==========
+-  printf("--- TEST 8: Nhieu file ---\n");
+-  mkdir("mf");
+-  touch("mf/f1");
+-  touch("mf/f2");
+-  touch("mf/f3");
+-
+-  run_tree_capture("mf", buf, sizeof(buf));
+-  check("Nhieu file trong 1 dir", buf,
+-        "mf/\n"
+-        "  f1\n"
+-        "  f2\n"
+-        "  f3\n",
+-        1);
+-
+-  // ========== KET QUA ==========
+-  printf("\n========================================\n");
+-  printf("  KET QUA: %d PASSED, %d FAILED\n", passed, failed);
+-  if (failed == 0)
+-    printf("  >> TAT CA TEST PASSED! <<\n");
+-  else
+-    printf("  >> CO TEST FAIL, KIEM TRA LAI! <<\n");
+-  printf("========================================\n");
+-
+-  exit(0);
+-}
+diff --git a/user/user.h b/user/user.h
+index f16fe27..547415f 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -22,6 +22,8 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int trace(int);
++
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+@@ -41,3 +43,5 @@ void *memcpy(void *, const void *, uint);
+ // umalloc.c
+ void* malloc(uint);
+ void free(void*);
++struct sysinfo;
++int sysinfo(struct sysinfo *);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..bc109fd 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("trace");
++entry("sysinfo");
+diff --git a/user/xargs.c b/user/xargs.c
+deleted file mode 100644
+index 1772688..0000000
+--- a/user/xargs.c
++++ /dev/null
+@@ -1,97 +0,0 @@
+-#include "../kernel/types.h"
+-#include "../kernel/stat.h"
+-#include "../kernel/fcntl.h"
+-#include "../user/user.h"
+-#include "../kernel/param.h"
+-
+-
+-int main(int argc, char *argv[])
+-{
+-	int x_argc;
+-	char *x_argv[MAXARG];
+-	char buf[512];
+-	char *start, *end;	//pointer that point in buffer
+-
+-    if (argc <= 1){ //check argc
+-        fprintf(2, "Error: missing command. Usage: xargs <command> [arg ...]\n");
+-        exit(1);
+-    } 
+-
+-	x_argc = argc - 1; //copy argv into x_argv
+-	for (int i = 1; i < argc; i++){
+-		x_argv[i - 1] = argv[i];
+-    }    
+-	start = buf;
+-    end = buf;
+-
+-	while (read(0, end, sizeof(char))) { //read -> lưu vào đchi end
+-		if (*end == '\n') {
+-			//put in arg
+-			if (x_argc == MAXARG - 1) {	//if full
+-				fprintf(2, "xargs: too many arguments\n");
+-				start = end = buf;
+-				*end = '\0';
+-
+-				while (*end != '\n') {
+-                    read(0, end, sizeof(char));
+-                }    
+-			} else {			// not full
+-				*end = '\0';
+-				x_argv[x_argc++] = start;
+-				end++;
+-				start = end;
+-			}
+-
+-			//fork and exec
+-			if (fork() == 0) {
+-				exec(x_argv[0], x_argv);
+-			}
+-
+-			//empty buffer and recover x_argc = argc - 1
+-			start = end = buf;
+-			x_argc = argc - 1;
+-
+-		} else if (*end == ' ') {
+-			if (x_argc == MAXARG - 1) {	//nếu đầy
+-				fprintf(2, "xargs: too many arguments\n");
+-				start = end = buf;
+-				*end = '\0';
+-				while (*end != '\n') {
+-                    read(0, end, sizeof(char));
+-                }    
+-			} else {			// else
+-				*end = '\0';
+-				x_argv[x_argc++] = start;
+-				end++;
+-				start = end;
+-			}
+-
+-
+-		} else {
+-			end++; 
+-		}
+-	}
+-
+-	if (buf != end) {	//while finished, but not empty
+-		if (x_argc == MAXARG-1) {	//if full
+-			fprintf(2, "xargs: too many arguments\n");
+-			start = end = buf;
+-			*end = '\0';
+-			while (*end != '\n') {
+-                read(0, end, sizeof(char));
+-            }    
+-		} else {			// not full
+-			*end = '\0';
+-			x_argv[x_argc++] = start;
+-			end++;
+-			start = end;
+-		}
+-		
+-		if(fork() == 0) {
+-			exec(x_argv[0], x_argv);
+-		}
+-	}
+-	
+-	wait(0);
+-	exit(0);
+-}
+\ No newline at end of file
+diff --git a/user/xargs_test.sh b/user/xargstest.sh
+similarity index 69%
+rename from user/xargs_test.sh
+rename to user/xargstest.sh
+index fa3b072..4362589 100644
+--- a/user/xargs_test.sh
++++ b/user/xargstest.sh
+@@ -3,4 +3,4 @@ echo hello > a/b
+ mkdir c
+ echo hello > c/b
+ echo hello > b
+-find . b | xargs grep hello
+\ No newline at end of file
++find . b | xargs grep hello
