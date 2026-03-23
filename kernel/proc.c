@@ -274,7 +274,6 @@ growproc(int n)
   return 0;
 }
 
-// cha sang con
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -302,8 +301,6 @@ fork(void)
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
-
-  np->trace_mask = p->trace_mask;
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
@@ -695,16 +692,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-uint64
-count_processes(void)
-{
-  struct proc *p;
-  uint64 count = 0;
-
-  for(p = proc; p < &proc[NPROC]; p++){
-    if(p->state != UNUSED) // Nếu slot này đang được sử dụng
-      count++;
-  }
-  return count;
 }
