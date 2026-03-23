@@ -22,8 +22,6 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-int trace(int);
-
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -43,5 +41,3 @@ void *memcpy(void *, const void *, uint);
 // umalloc.c
 void* malloc(uint);
 void free(void*);
-struct sysinfo;
-int sysinfo(struct sysinfo *);
